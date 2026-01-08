@@ -422,6 +422,32 @@ func main() {
 
 	var rootCmd = &cobra.Command{Use: "totp", Short: "Simple TOTP CLI, powered by the system keyring", Version: "1.1.3"}
 	rootCmd.AddCommand(cmdScan, cmdAdd, cmdList, cmdGet, cmdDelete, cmdTemp)
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion scripts",
+		Args:  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		ValidArgs: []string{
+			"bash",
+			"zsh",
+			"fish",
+			"powershell",
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return rootCmd.GenBashCompletion(os.Stdout)
+			case "zsh":
+				return rootCmd.GenZshCompletion(os.Stdout)
+			case "fish":
+				return rootCmd.GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return rootCmd.GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell: %q", args[0])
+			}
+		},
+	})
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
