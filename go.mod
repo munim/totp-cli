@@ -1,4 +1,4 @@
-module github.com/simnalamburt/macos-totp-cli
+module github.com/munim/totp-cli
 
 go 1.22.2
 
