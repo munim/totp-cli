@@ -1,6 +1,6 @@
-macos-totp-cli
+totp-cli
 ========
-macos-totp-cli is a simple TOTP CLI, powered by keychain of macOS.
+A simple TOTP CLI, powered by your OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service).
 
 ### Installation
 ```bash
@@ -22,14 +22,14 @@ Usage:
   totp [command]
 
 Available Commands:
-  add         Manually add a secret to the macOS keychain
+  add         Manually add a secret to the system keyring
   completion  Generate the autocompletion script for the specified shell
   delete      Delete a TOTP code
   get         Get a TOTP code
   help        Help about any command
   list        List all registered TOTP codes
   scan        Scan a QR code image
-  temp        Get a TOTP code from a secret without saving it to the keychain
+  temp        Get a TOTP code from a secret without saving it to the keyring
 
 Flags:
   -h, --help      help for totp
@@ -59,10 +59,15 @@ Type secret: ABCDEFGHIJKLMNOPQRSTUVWXYZ
 123456
 ```
 
+### Notes
+
+- `totp list` is backed by an index file at `~/.totp.json` (names only). On `list`, the index is automatically healed by removing entries that no longer exist in the keyring.
+- Upgrade note: older versions stored secrets in a macOS-only way; after upgrading, you may need to re-add your secrets.
+
 &nbsp;
 
 --------
-*macos-totp-cli* is primarily distributed under the terms of both the [Apache
+*totp-cli* is primarily distributed under the terms of both the [Apache
 License (Version 2.0)] and the [MIT license]. See [COPYRIGHT] for details.
 
 [MIT license]: LICENSE-MIT
