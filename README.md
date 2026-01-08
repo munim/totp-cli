@@ -59,6 +59,34 @@ Type secret: ABCDEFGHIJKLMNOPQRSTUVWXYZ
 123456
 ```
 
+### Shell completion
+
+Bash:
+
+```bash
+totp completion bash > /usr/local/share/bash-completion/completions/totp
+```
+
+Zsh:
+
+```zsh
+# In your ~/.zshrc
+source <(totp completion zsh)
+```
+
+Fish:
+
+```fish
+totp completion fish > ~/.config/fish/completions/totp.fish
+```
+
+PowerShell:
+
+```powershell
+# In your $PROFILE
+Invoke-Expression ((totp completion powershell) -join [Environment]::NewLine)
+```
+
 ### Notes
 
 - `totp list` is backed by an index file at `~/.totp.json` (names only). On `list`, the index is automatically healed by removing entries that no longer exist in the keyring.
