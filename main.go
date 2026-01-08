@@ -10,45 +10,188 @@ import (
 	"net/url"
 	"os"
 
-	keychain "github.com/keybase/go-keychain"
+	"bufio"
+	"encoding/json"
+	"path/filepath"
+	"sort"
+	"strings"
+
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 	"github.com/spf13/cobra"
 	"github.com/xlzd/gotp"
+	"github.com/zalando/go-keyring"
 )
 
-const serviceName = "macOS TOTP CLI"
+const serviceName = "totp"
+
+type indexFile struct {
+	Names []string `json:"names"`
+}
+
+func indexFilePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".totp.json"), nil
+}
+
+func readIndex() (indexFile, error) {
+	path, err := indexFilePath()
+	if err != nil {
+		return indexFile{}, err
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return indexFile{}, nil
+		}
+		return indexFile{}, err
+	}
+
+	var idx indexFile
+	if err := json.Unmarshal(b, &idx); err != nil {
+		return indexFile{}, err
+	}
+	return idx, nil
+}
+
+func writeIndex(idx indexFile) error {
+	path, err := indexFilePath()
+	if err != nil {
+		return err
+	}
+
+	sort.Strings(idx.Names)
+	b, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		return err
+	}
+	b = append(b, '\n')
+	return os.WriteFile(path, b, 0o600)
+}
+
+func addNameToIndex(name string) error {
+	idx, err := readIndex()
+	if err != nil {
+		return err
+	}
+
+	for _, n := range idx.Names {
+		if n == name {
+			return nil
+		}
+	}
+	idx.Names = append(idx.Names, name)
+	return writeIndex(idx)
+}
+
+func removeNameFromIndex(name string) error {
+	idx, err := readIndex()
+	if err != nil {
+		return err
+	}
+
+	out := idx.Names[:0]
+	for _, n := range idx.Names {
+		if n != name {
+			out = append(out, n)
+		}
+	}
+	idx.Names = out
+	return writeIndex(idx)
+}
 
 func addItem(name, secret string) error {
-	// Store it to the keychain
-	item := keychain.NewItem()
-	item.SetSecClass(keychain.SecClassGenericPassword)
-	item.SetService(serviceName)
-	item.SetAccount(name)
-	item.SetLabel(name)
-	item.SetData([]byte(secret))
-	item.SetSynchronizable(keychain.SynchronizableNo)
-	item.SetAccessible(keychain.AccessibleWhenPasscodeSetThisDeviceOnly)
-	return keychain.AddItem(item)
+	if err := keyring.Set(serviceName, name, secret); err != nil {
+		if errors.Is(err, keyring.ErrSetDataTooBig) {
+			return fmt.Errorf("secret too large to store in system keyring: %w", err)
+		}
+		return err
+	}
+	return addNameToIndex(name)
+}
+
+func getItem(name string) (string, error) {
+	secret, err := keyring.Get(serviceName, name)
+	if err != nil {
+		if errors.Is(err, keyring.ErrNotFound) {
+			return "", errors.New("Given name is not found")
+		}
+		return "", err
+	}
+	return secret, nil
+}
+
+func deleteItem(name string) error {
+	err := keyring.Delete(serviceName, name)
+	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	return removeNameFromIndex(name)
 }
 
 func listItems() ([]string, error) {
-	// Query items
-	query := keychain.NewItem()
-	query.SetSecClass(keychain.SecClassGenericPassword)
-	query.SetService(serviceName)
-	query.SetMatchLimit(keychain.MatchLimitAll)
-	query.SetReturnAttributes(true)
-	results, err := keychain.QueryItem(query)
+	idx, err := readIndex()
 	if err != nil {
 		return nil, err
 	}
 
-	var names []string
-	for _, r := range results {
-		names = append(names, r.Account)
+	var kept []string
+	for _, name := range idx.Names {
+		_, err := keyring.Get(serviceName, name)
+		if err == nil {
+			kept = append(kept, name)
+			continue
+		}
+		if errors.Is(err, keyring.ErrNotFound) {
+			continue
+		}
+		return nil, err
 	}
-	return names, nil
+	idx.Names = kept
+	if err := writeIndex(idx); err != nil {
+		return nil, err
+	}
+
+	return idx.Names, nil
+}
+
+func nameExists(name string) (bool, error) {
+	_, err := keyring.Get(serviceName, name)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, keyring.ErrNotFound) {
+		return false, nil
+	}
+	return false, err
+}
+
+func promptNewName(initial string) (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	name := initial
+	for {
+		exists, err := nameExists(name)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return name, nil
+		}
+
+		fmt.Printf("Name \"%v\" already exists. Type new name: ", name)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			continue
+		}
+		name = strings.TrimSpace(line)
+		if name == "" {
+			continue
+		}
+	}
 }
 
 func main() {
@@ -57,7 +200,7 @@ func main() {
 	var cmdScan = &cobra.Command{
 		Use:   "scan <name> <image>",
 		Short: "Scan a QR code image",
-		Long:  `Scan a QR code image and store it to the macOS keychain.`,
+		Long:  `Scan a QR code image and store it to the system keyring.`,
 		Args:  cobra.ExactArgs(2),
 
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -106,7 +249,11 @@ func main() {
 				return errors.New("Given QR code is not for TOTP")
 			}
 
-			// Save to the keychain
+			name, err = promptNewName(name)
+			if err != nil {
+				return err
+			}
+
 			err = addItem(name, secret)
 			if err != nil {
 				return err
@@ -133,10 +280,13 @@ func main() {
 
 	var cmdAdd = &cobra.Command{
 		Use:   "add <name>",
-		Short: "Manually add a secret to the macOS keychain",
+		Short: "Manually add a secret to the system keyring",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
+			name, err := promptNewName(args[0])
+			if err != nil {
+				return err
+			}
 
 			// Read secret from stdin
 			var secret string
@@ -146,8 +296,7 @@ func main() {
 				return errors.New("No secret was given")
 			}
 
-			// Save to the keychain
-			err := addItem(name, secret)
+			err = addItem(name, secret)
 			if err != nil {
 				return err
 			}
@@ -178,28 +327,17 @@ func main() {
 	var cmdGet = &cobra.Command{
 		Use:   "get <name>",
 		Short: "Get a TOTP code",
+		Long:  "Get a TOTP code from the system keyring.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			// Query an item
-			query := keychain.NewItem()
-			query.SetSecClass(keychain.SecClassGenericPassword)
-			query.SetService(serviceName)
-			query.SetAccount(name)
-			query.SetMatchLimit(keychain.MatchLimitOne)
-			query.SetReturnData(true)
-			results, err := keychain.QueryItem(query)
+			secret, err := getItem(name)
 			if err != nil {
 				return err
 			}
-			if len(results) != 1 {
-				return errors.New("Given name is not found")
-			}
-			r := results[0]
 
-			// Generate a TOTP code
-			fmt.Println(gotp.NewDefaultTOTP(string(r.Data)).Now())
+			fmt.Println(gotp.NewDefaultTOTP(secret).Now())
 			return nil
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -223,13 +361,7 @@ func main() {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			// Delete an item
-			query := keychain.NewItem()
-			query.SetSecClass(keychain.SecClassGenericPassword)
-			query.SetService(serviceName)
-			query.SetAccount(name)
-			query.SetMatchLimit(keychain.MatchLimitOne)
-			err := keychain.DeleteItem(query)
+			err := deleteItem(name)
 			if err != nil {
 				return err
 			}
@@ -271,7 +403,7 @@ func main() {
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	var rootCmd = &cobra.Command{Use: "totp", Short: "Simple TOTP CLI, powered by keychain of macOS", Version: "1.1.3"}
+	var rootCmd = &cobra.Command{Use: "totp", Short: "Simple TOTP CLI, powered by the system keyring", Version: "1.1.3"}
 	rootCmd.AddCommand(cmdScan, cmdAdd, cmdList, cmdGet, cmdDelete, cmdTemp)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
