@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"bufio"
+	"encoding/base32"
 	"encoding/json"
 	"path/filepath"
 	"sort"
@@ -102,6 +103,17 @@ func removeNameFromIndex(name string) error {
 	}
 	idx.Names = out
 	return writeIndex(idx)
+}
+
+func normalizeAndValidateSecret(secret string) (string, error) {
+	normalized := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(secret), " ", ""))
+	if normalized == "" {
+		return "", errors.New("No secret was given")
+	}
+	if _, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(normalized); err != nil {
+		return "", errors.New("Invalid secret (expected Base32)")
+	}
+	return normalized, nil
 }
 
 func addItem(name, secret string) error {
@@ -243,9 +255,11 @@ func main() {
 			if err != nil {
 				return err
 			}
-			secret := parsed.Query().Get("secret")
-			// Reference: https://github.com/google/google-authenticator/wiki/Key-Uri-Format
-			if parsed.Scheme != "otpauth" || parsed.Host != "totp" || secret == "" {
+			secret, err := normalizeAndValidateSecret(parsed.Query().Get("secret"))
+			if err != nil {
+				return err
+			}
+			if parsed.Scheme != "otpauth" || parsed.Host != "totp" {
 				return errors.New("Given QR code is not for TOTP")
 			}
 
@@ -292,9 +306,12 @@ func main() {
 			var secret string
 			fmt.Print("Type secret: ")
 			fmt.Scanln(&secret)
-			if secret == "" {
-				return errors.New("No secret was given")
+
+			secret, err = normalizeAndValidateSecret(secret)
+			if err != nil {
+				return err
 			}
+			fmt.Printf("Current code: %v\n", gotp.NewDefaultTOTP(secret).Now())
 
 			err = addItem(name, secret)
 			if err != nil {
@@ -385,18 +402,18 @@ func main() {
 
 	var cmdTemp = &cobra.Command{
 		Use:   "temp",
-		Short: "Get a TOTP code from a secret without saving it to the keychain",
+		Short: "Get a TOTP code from a secret without saving it to the keyring",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Read secret from stdin
 			var secret string
 			fmt.Print("Type secret: ")
 			fmt.Scanln(&secret)
-			if secret == "" {
-				return errors.New("No secret was given")
+
+			secret, err := normalizeAndValidateSecret(secret)
+			if err != nil {
+				return err
 			}
 
-			// Generate a TOTP code
 			fmt.Println(gotp.NewDefaultTOTP(secret).Now())
 			return nil
 		},
