@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1
+
+- Added `-c/--copy` flag to copy the current code to the clipboard for:
+  - `totp get`
+  - `totp temp`
+  - `totp add` (copies the "Current code" output)
+- When copying succeeds, prints a masked confirmation like `12**** (copied)`.
+- When copying fails, prints the full code with a note like `123456 (copy failed)`.
+
 ## 0.1.0
 
 - Forked from a macOS-only TOTP CLI (Keychain-based) and made it cross-platform.
@@ -19,7 +28,7 @@
   - PowerShell
 - Overhauled README with detailed usage examples, platform notes, security considerations, troubleshooting, and completion setup.
 - Renamed/positioned project as `totp-cli` and updated repository references.
-- Updated Go module path to `github.com/muinim/totp-cli`.
+- Updated Go module path to `github.com/munim/totp-cli`.
 - Reworked GitHub Actions:
   - removed standalone CI workflow
   - added tag-driven release workflow for tags matching `x.x.x`

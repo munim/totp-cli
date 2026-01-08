@@ -3,6 +3,7 @@ module github.com/munim/totp-cli
 go 1.22.2
 
 require (
+	github.com/atotto/clipboard v0.1.4
 	github.com/makiuchi-d/gozxing v0.1.1
 	github.com/spf13/cobra v1.8.1
 	github.com/xlzd/gotp v0.1.0

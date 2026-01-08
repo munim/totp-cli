@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/makiuchi-d/gozxing"
 	"github.com/makiuchi-d/gozxing/qrcode"
 	"github.com/spf13/cobra"
@@ -124,6 +125,25 @@ func addItem(name, secret string) error {
 		return err
 	}
 	return addNameToIndex(name)
+}
+
+func outputCode(code string, copyToClipboard bool) error {
+	if !copyToClipboard {
+		fmt.Println(code)
+		return nil
+	}
+
+	if err := clipboard.WriteAll(code); err != nil {
+		fmt.Printf("%v (copy failed)\n", code)
+		return nil
+	}
+
+	masked := code
+	if len(code) >= 2 {
+		masked = code[:2] + "****"
+	}
+	fmt.Printf("%v (copied)\n", masked)
+	return nil
 }
 
 func getItem(name string) (string, error) {
@@ -292,6 +312,7 @@ func main() {
 		"use PURE_BARCODE hint for decoding. this flag maybe solves FormatException",
 	)
 
+	var copyAdd bool
 	var cmdAdd = &cobra.Command{
 		Use:   "add <name>",
 		Short: "Manually add a secret to the system keyring",
@@ -311,7 +332,16 @@ func main() {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("Current code: %v\n", gotp.NewDefaultTOTP(secret).Now())
+
+			code := gotp.NewDefaultTOTP(secret).Now()
+			if copyAdd {
+				fmt.Print("Current code: ")
+				if err := outputCode(code, true); err != nil {
+					return err
+				}
+			} else {
+				fmt.Printf("Current code: %v\n", code)
+			}
 
 			err = addItem(name, secret)
 			if err != nil {
@@ -322,6 +352,8 @@ func main() {
 		},
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
+
+	cmdAdd.Flags().BoolVarP(&copyAdd, "copy", "c", false, "copy the current code to the clipboard")
 
 	var cmdList = &cobra.Command{
 		Use:   "list",
@@ -341,6 +373,7 @@ func main() {
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
+	var copyGet bool
 	var cmdGet = &cobra.Command{
 		Use:   "get <name>",
 		Short: "Get a TOTP code",
@@ -354,8 +387,7 @@ func main() {
 				return err
 			}
 
-			fmt.Println(gotp.NewDefaultTOTP(secret).Now())
-			return nil
+			return outputCode(gotp.NewDefaultTOTP(secret).Now(), copyGet)
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
@@ -370,6 +402,8 @@ func main() {
 			return names, cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+
+	cmdGet.Flags().BoolVarP(&copyGet, "copy", "c", false, "copy the current code to the clipboard")
 
 	var cmdDelete = &cobra.Command{
 		Use:   "delete <name>",
@@ -400,6 +434,7 @@ func main() {
 		},
 	}
 
+	var copyTemp bool
 	var cmdTemp = &cobra.Command{
 		Use:   "temp",
 		Short: "Get a TOTP code from a secret without saving it to the keyring",
@@ -414,13 +449,14 @@ func main() {
 				return err
 			}
 
-			fmt.Println(gotp.NewDefaultTOTP(secret).Now())
-			return nil
+			return outputCode(gotp.NewDefaultTOTP(secret).Now(), copyTemp)
 		},
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	var rootCmd = &cobra.Command{Use: "totp", Short: "Simple TOTP CLI, powered by the system keyring", Version: "1.1.3"}
+	cmdTemp.Flags().BoolVarP(&copyTemp, "copy", "c", false, "copy the current code to the clipboard")
+
+	var rootCmd = &cobra.Command{Use: "totp", Short: "Simple TOTP CLI, powered by the system keyring", Version: "0.1.1"}
 	rootCmd.AddCommand(cmdScan, cmdAdd, cmdList, cmdGet, cmdDelete, cmdTemp)
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 	rootCmd.AddCommand(&cobra.Command{

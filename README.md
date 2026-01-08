@@ -47,7 +47,7 @@ For `totp add`, `totp` also prints a `Current code: ...` line before storing so 
 A single static universal binary is published for both Apple Silicon and Intel Macs.
 
 ```bash
-curl -LO "https://github.com/munim/totp-cli/releases/download/v1.1.3/totp"
+curl -LO "https://github.com/munim/totp-cli/releases/download/0.1.1/totp"
 chmod +x totp
 ```
 
@@ -77,6 +77,15 @@ Current code: 123456
 Given secret successfully registered as "github".
 ```
 
+Copy the current code to clipboard while adding:
+
+```console
+$ totp add -c github
+Type secret: JBSW Y3DP EHPK 3PXP
+Current code: 12**** (copied)
+Given secret successfully registered as "github".
+```
+
 If the name already exists, `totp` will keep prompting until you provide a new, unused name.
 
 ### `totp get <name>`
@@ -84,6 +93,13 @@ If the name already exists, `totp` will keep prompting until you provide a new, 
 ```console
 $ totp get github
 123456
+```
+
+Copy to clipboard (prints masked confirmation on success):
+
+```console
+$ totp get -c github
+12**** (copied)
 ```
 
 ### `totp list`
@@ -125,6 +141,14 @@ Generate a code from a secret without storing anything.
 $ totp temp
 Type secret: JBSWY3DPEHPK3PXP
 123456
+```
+
+Copy to clipboard:
+
+```console
+$ totp temp -c
+Type secret: JBSWY3DPEHPK3PXP
+12**** (copied)
 ```
 
 ## Shell completion
