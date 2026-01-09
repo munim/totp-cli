@@ -2,6 +2,10 @@
 
 A small, cross-platform TOTP CLI that stores shared secrets in your OS keyring (macOS Keychain, Windows Credential Manager, Linux Secret Service).
 
+> Fork note: This project was forked from https://github.com/simnalamburt/macos-totp-cli.
+> The upstream project appears to be inactive, so this fork continues development and expands support beyond macOS.
+> Thanks to the original author [simnalamburt](https://github.com/simnalamburt) and contributors for the initial implementation.
+
 - Binary name: `totp`
 - Repository: `github.com/munim/totp-cli`
 
